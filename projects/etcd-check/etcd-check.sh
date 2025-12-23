@@ -75,13 +75,13 @@ function show_help() {
 用法: ${SCRIPT_NAME} [选项]
 
 说明：
-  etcd 集群健康检查工具，输出异常节点的 IP 地址
+  etcd 集群健康检查工具，输出异常节点的 IP 地址和具体原因
   
   功能：
   1. 自动发现 Kubernetes master 节点
   2. 检查 etcd 节点健康状态
   3. 验证 etcd 数据一致性
-  4. 输出异常节点 IP（如果有异常则退出码为1，无异常则退出码为0）
+  4. 输出格式：<IP地址> <原因>（不可达/不健康/数据不一致）
 
 选项：
   -v, --verbose            启用详细输出
@@ -91,9 +91,14 @@ function show_help() {
   --etcd-client-port PORT  指定 etcd 客户端端口 (默认: 2379)
 
 示例：
-  ${SCRIPT_NAME}                                    # 基本检查，输出异常节点IP
+  ${SCRIPT_NAME}                                    # 基本检查
   ${SCRIPT_NAME} --verbose                          # 详细输出模式
   ${SCRIPT_NAME} --etcd-port 2381 --debug          # 自定义端口并启用调试
+
+输出示例：
+  192.168.1.10 不可达
+  192.168.1.11 不健康
+  192.168.1.12 数据不一致
 
 版本: ${VERSION}
 EOF
@@ -340,49 +345,39 @@ function perform_consistency_check() {
     fi
 }
 
-# 生成检查报告 - 只输出异常节点IP
+# 输出异常节点IP和原因
 function generate_report() {
     local has_issues=0
-    local abnormal_ips=()
     
-    # 检查并报告不可达节点
+    # 输出不可达节点
     if [[ ${#UNREACHABLE_NODES[@]} -gt 0 ]]; then
-        echo "etcd节点网络不可达或服务未启动"
         has_issues=1
-        # 添加不可达节点IP
         for node_info in "${UNREACHABLE_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            abnormal_ips+=("${node_ip}")
+            echo "${node_ip} 不可达"
         done
     fi
     
-    # 检查并报告不健康节点
+    # 输出不健康节点
     if [[ ${#UNHEALTHY_NODES[@]} -gt 0 ]]; then
-        echo "etcd节点健康检查失败"
         has_issues=1
-        # 添加不健康节点IP
         for node_info in "${UNHEALTHY_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            abnormal_ips+=("${node_ip}")
+            echo "${node_ip} 不健康"
         done
     fi
     
-    # 检查并报告数据不一致节点
+    # 输出数据不一致节点
     if [[ ${#INCONSISTENT_NODES[@]} -gt 0 ]]; then
-        echo "etcd节点数据不一致"
         has_issues=1
-        # 添加数据不一致节点IP
         for node_info in "${INCONSISTENT_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            abnormal_ips+=("${node_ip}")
+            echo "${node_ip} 数据不一致"
         done
     fi
     
-    # 如果有异常，输出所有异常节点的IP
+    # 返回适当的退出码
     if [[ ${has_issues} -eq 1 ]]; then
-        echo "异常节点:"
-        # 输出异常节点IP（去重）
-        printf '%s\n' "${abnormal_ips[@]}" | sort -u
         return 1
     else
         return 0
