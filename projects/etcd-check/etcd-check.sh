@@ -76,12 +76,13 @@ function show_help() {
 
 说明：
   etcd 集群健康检查工具，输出异常节点的 IP 地址和具体原因
-  
+
   功能：
   1. 自动发现 Kubernetes master 节点
   2. 检查 etcd 节点健康状态
   3. 验证 etcd 数据一致性
-  4. 输出格式：<IP地址> <原因>（不可达/不健康/数据不一致）
+  4. 自动查找并安装 etcdctl（如果需要）
+  5. 输出格式：[原因] <IP地址>
 
 选项：
   -v, --verbose            启用详细输出
@@ -96,18 +97,54 @@ function show_help() {
   ${SCRIPT_NAME} --etcd-port 2381 --debug          # 自定义端口并启用调试
 
 输出示例：
-  192.168.1.10 不可达
-  192.168.1.11 不健康
-  192.168.1.12 数据不一致
+  # 有异常节点时
+  [不可达] 192.168.1.10
+  [不健康] 192.168.1.11
+  [数据不一致] 192.168.1.12
+
+  # 无异常节点时
+  未检测到异常节点
 
 版本: ${VERSION}
 EOF
 }
 
+# 自动查找并安装 etcdctl
+function setup_etcdctl() {
+    # 如果 etcdctl 已经在 PATH 中，直接返回
+    if command -v etcdctl >/dev/null 2>&1; then
+        log_debug "etcdctl 已安装: $(command -v etcdctl)"
+        return 0
+    fi
+
+    log_debug "etcdctl 未找到，尝试从 containerd 目录查找..."
+
+    # 在 containerd 目录中查找 etcdctl
+    local etcdctl_path
+    etcdctl_path=$(find /var/lib/containerd/ -name etcdctl -print -quit 2>/dev/null)
+
+    if [[ -z "${etcdctl_path}" ]]; then
+        log_debug "未在 /var/lib/containerd/ 中找到 etcdctl"
+        return 1
+    fi
+
+    log_debug "找到 etcdctl: ${etcdctl_path}"
+
+    # 复制到 /usr/local/bin
+    if cp "${etcdctl_path}" /usr/local/bin/etcdctl 2>/dev/null; then
+        chmod +x /usr/local/bin/etcdctl
+        log_debug "etcdctl 已复制到 /usr/local/bin/etcdctl"
+        return 0
+    else
+        log_warn "无法复制 etcdctl 到 /usr/local/bin（可能需要 root 权限）"
+        return 1
+    fi
+}
+
 # 检查必需的工具
 function check_prerequisites() {
     local required_tools=("kubectl" "curl")
-    local optional_tools=("etcdctl" "timeout")
+    local optional_tools=("timeout")
     local missing_tools=()
     local missing_optional=()
 
@@ -127,22 +164,25 @@ function check_prerequisites() {
 
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
         log_error "缺少必需的工具: ${missing_tools[*]}"
-        log_error "请安装缺少的工具后重试"
         return 1
     fi
 
-    if [[ ${#missing_optional[@]} -gt 0 ]]; then
+    if [[ ${#missing_optional[@]} -gt 0 ]] && [[ "${VERBOSE}" == "1" ]]; then
         log_warn "缺少可选工具: ${missing_optional[*]}"
-        log_warn "某些功能可能受限"
     fi
 
     # 检查 kubectl 连接
     if ! kubectl cluster-info >/dev/null 2>&1; then
-        log_error "无法连接到 Kubernetes 集群，请检查 kubeconfig 配置"
+        log_error "无法连接到 Kubernetes 集群"
         return 1
     fi
 
-    log_debug "前置条件检查通过"
+    # 尝试设置 etcdctl
+    if ! setup_etcdctl; then
+        if [[ "${VERBOSE}" == "1" ]]; then
+            log_warn "etcdctl 不可用，将跳过数据一致性检查"
+        fi
+    fi
 }
 
 # 获取 master 节点信息
@@ -348,38 +388,39 @@ function perform_consistency_check() {
 # 输出异常节点IP和原因
 function generate_report() {
     local has_issues=0
-    
+
     # 输出不可达节点
     if [[ ${#UNREACHABLE_NODES[@]} -gt 0 ]]; then
         has_issues=1
         for node_info in "${UNREACHABLE_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            echo "${node_ip} 不可达"
+            echo "[不可达] ${node_ip}"
         done
     fi
-    
+
     # 输出不健康节点
     if [[ ${#UNHEALTHY_NODES[@]} -gt 0 ]]; then
         has_issues=1
         for node_info in "${UNHEALTHY_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            echo "${node_ip} 不健康"
+            echo "[不健康] ${node_ip}"
         done
     fi
-    
+
     # 输出数据不一致节点
     if [[ ${#INCONSISTENT_NODES[@]} -gt 0 ]]; then
         has_issues=1
         for node_info in "${INCONSISTENT_NODES[@]}"; do
             local node_ip="${node_info##*:}"
-            echo "${node_ip} 数据不一致"
+            echo "[数据不一致] ${node_ip}"
         done
     fi
-    
+
     # 返回适当的退出码
     if [[ ${has_issues} -eq 1 ]]; then
         return 1
     else
+        echo "未检测到异常节点"
         return 0
     fi
 }
