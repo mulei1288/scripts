@@ -27,7 +27,7 @@ for arg in "$@"; do
 done
 
 # ---------- 默认 rsync 参数 ----------
-DEFAULT_RSYNC_OPTS=(-avz --progress)
+DEFAULT_RSYNC_OPTS=(-avz --progress -h)
 
 # ---------- 尝试 rsync ----------
 for pass in "${passwords[@]}"; do
