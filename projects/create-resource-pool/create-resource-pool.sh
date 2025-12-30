@@ -63,8 +63,8 @@ function main() {
     fi
 
     if [[ -z "${worker_nodes}" ]]; then
-        log_error "未找到 worker 节点"
-        exit 1
+        log_info "未找到 worker 节点，跳过创建资源池"
+        return 0
     fi
 
     log_info "找到 worker 节点: ${worker_nodes}"
