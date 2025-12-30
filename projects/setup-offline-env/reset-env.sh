@@ -1,0 +1,1 @@
+iptables -F && iptables -X
