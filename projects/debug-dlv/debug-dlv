@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# 检查是否提供了参数
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <dlv exec arguments>"
+    exit 1
+fi
+
+# 使用 dlv 启动调试模式，并传递所有参数
+dlv --listen=:2345 \
+    --headless=true \
+    --api-version=2 \
+    --accept-multiclient \
+    --check-go-version=false \
+    exec -- "/usr/bin/$@"
