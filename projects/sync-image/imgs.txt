@@ -1,1 +1,8 @@
-dev.bingosoft.net/bingokube/opbox:v1.1
+dev.bingosoft.net/bingokube/kube-apiserver:v1.25.26-tenant
+dev.bingosoft.net/bingokube/kube-controller-manager:v1.25.26-tenant
+dev.bingosoft.net/bingokube/kube-scheduler:v1.25.26-tenant
+dev.bingosoft.net/bingokube/kube-proxy:v1.25.26-tenant
+dev.bingosoft.net/bingokube/pause:3.5
+dev.bingosoft.net/bingokube/etcd:3.5.0-0
+dev.bingosoft.net/bingokube/coredns:v1.8.6
+
